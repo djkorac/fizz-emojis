@@ -1,0 +1,75 @@
+name: Update Emoji Map
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: write
+
+jobs:
+  update-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required to fetch all tags for versioning
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      - name: Generate Emoji Map
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/generate-emoji-map.sh
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if [[ -n $(git status -s emojis.json) ]]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "::notice::Changes detected in emojis.json"
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "::notice::No changes detected."
+          fi
+
+      - name: Determine Next Version
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        id: next_ver
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+
+          VERSION=${LATEST_TAG#v}
+
+          IFS='.' read -r -a PARTS <<< "$VERSION"
+
+          PARTS[2]=$((PARTS[2] + 1))
+
+          NEW_TAG="v${PARTS[0]}.${PARTS[1]}.${PARTS[2]}"
+
+          echo "old_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "Bumping version from $LATEST_TAG to $NEW_TAG"
+
+      - name: Commit and Push Changes
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add emojis.json
+          git commit -m "chore: update emojis.json [skip ci]"
+          git push
+
+      - name: Create Release Tag
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        env:
+          NEW_TAG: ${{ steps.next_ver.outputs.new_tag }}
+        run: |
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
