@@ -21,7 +21,7 @@ echo "Resizing 3D PNGs to 128x128..."
 
 find "$FLUENT_REPO_DIR/assets" -type f -name '*_3d.png' -print0 | while IFS= read -r -d '' src; do
   name="$(basename "$src")"
-  magick "$src" -resize 128x128 "$OUTDIR/$name"
+  convert "$src" -resize 128x128 "$OUTDIR/$name"
 done
 
 COUNT=$(find "$OUTDIR" -type f -name '*.png' | wc -l)
